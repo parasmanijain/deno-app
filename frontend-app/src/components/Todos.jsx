@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import  { useState, useEffect, useCallback } from 'react';
 
 import './Todos.css';
 
@@ -71,7 +71,7 @@ const Todos = () => {
   };
 
   return (
-    <React.Fragment>
+    <>
       <div className="todos__form">
         <form onSubmit={submitHandler}>
           <label>Todo Text</label>
@@ -96,7 +96,7 @@ const Todos = () => {
           ))}
         </ul>
       )}
-    </React.Fragment>
+    </>
   );
 };
 
