@@ -1,97 +1,84 @@
 import { Context, Router } from "https://deno.land/x/oak@v17.2.0/mod.ts";
-
-interface Todo {
-  id: string;
-  text: string;
-}
-
-interface CreateTodoBody {
-  text: string;
-}
+import { ObjectId } from "npm:mongodb";
+import { getDb } from "../helpers/db_client.ts";
 
 const router = new Router();
 
-let todos: Todo[] = [];
+interface Todo {
+  id?: string;
+  text: string;
+}
 
-router.get("/todos", (ctx: Context) => {
-  ctx.response.body = { todos };
+interface TodoDoc {
+  _id: ObjectId;
+  text: string;
+}
+
+/**
+ * GET /todos
+ * Same logic as old file, updated for new Mongo cursor API
+ */
+router.get("/todos", async (ctx: Context) => {
+  const todos = await getDb().collection<TodoDoc>("todos").find().toArray();
+
+  const transformedTodos = todos.map((todo: TodoDoc) => ({
+    id: todo._id.toString(),
+    text: todo.text,
+  }));
+
+  ctx.response.body = { todos: transformedTodos };
 });
 
+/**
+ * POST /todos
+ * Equivalent to old ctx.request.body().value usage
+ */
 router.post("/todos", async (ctx: Context) => {
-  if (!ctx.request.hasBody) {
-    ctx.response.status = 400;
-    ctx.response.body = { message: "Request body required" };
-    return;
-  }
-  let value: CreateTodoBody;
-  try {
-    value = await ctx.request.body.json();
-  } catch {
-    ctx.response.status = 415;
-    ctx.response.body = { message: "Invalid JSON body" };
-    return;
-  }
-
-  if (!value?.text) {
-    ctx.response.status = 400;
-    ctx.response.body = { message: "Missing 'text' field" };
-    return;
-  }
+  const data = await ctx.request.body.json();
 
   const newTodo: Todo = {
-    id: crypto.randomUUID(),
-    text: value.text,
+    text: data.text,
   };
 
-  todos.push(newTodo);
+  const insertId = await getDb()
+    .collection("todos")
+    .insertOne({ text: newTodo.text });
 
-  ctx.response.status = 201;
-  ctx.response.body = { message: "Created todo!", todo: newTodo };
+  newTodo.id = insertId.toString();
+
+  ctx.response.body = {
+    message: "Created todo!",
+    todo: newTodo,
+  };
 });
 
+/**
+ * PUT /todos/:todoId
+ * Direct Mongo update (same as old file)
+ */
 router.put("/todos/:todoId", async (ctx: Context) => {
-  const todoId = ctx.params.todoId;
-  if (!todoId) {
-    ctx.response.status = 400;
-    ctx.response.body = { message: "Todo ID missing" };
-    return;
-  }
+  const tid = ctx.params.todoId!;
 
-  let value: CreateTodoBody;
-  try {
-    value = await ctx.request.body.json();
-  } catch {
-    ctx.response.status = 415;
-    ctx.response.body = { message: "Invalid JSON body" };
-    return;
-  }
+  const data = await ctx.request.body.json();
 
-  if (!value?.text) {
-    ctx.response.status = 400;
-    ctx.response.body = { message: "Missing 'text' field" };
-    return;
-  }
+  await getDb()
+    .collection("todos")
+    .updateOne({ _id: new ObjectId(tid) }, { $set: { text: data.text } });
 
-  const todoIndex = todos.findIndex((t) => t.id === todoId);
-  if (todoIndex === -1) {
-    ctx.response.status = 404;
-    ctx.response.body = { message: "Todo not found" };
-    return;
-  }
-
-  todos[todoIndex].text = value.text;
   ctx.response.body = { message: "Updated todo" };
 });
 
-router.delete("/todos/:todoId", (ctx: Context) => {
-  const todoId = ctx.params.todoId;
-  if (!todoId) {
-    ctx.response.status = 400;
-    ctx.response.body = { message: "Todo ID missing" };
-    return;
-  }
+/**
+ * DELETE /todos/:todoId
+ * Direct Mongo delete (same as old file)
+ */
+router.delete("/todos/:todoId", async (ctx: Context) => {
+  const tid = ctx.params.todoId!;
 
-  todos = todos.filter((t) => t.id !== todoId);
+  await getDb()
+    .collection("todos")
+    .deleteOne({ _id: new ObjectId(tid) });
+
   ctx.response.body = { message: "Deleted todo" };
 });
 
