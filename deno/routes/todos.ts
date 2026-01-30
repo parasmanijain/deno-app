@@ -1,44 +1,97 @@
-import { Router } from "https://deno.land/x/oak/mod.ts";
-import { getDb } from "../helpers/db_client.ts";
-
-const router = new Router();
+import { Context, Router } from "https://deno.land/x/oak@v17.2.0/mod.ts";
 
 interface Todo {
   id: string;
   text: string;
 }
 
+interface CreateTodoBody {
+  text: string;
+}
+
+const router = new Router();
+
 let todos: Todo[] = [];
 
-router.get("/todos", (ctx) => {
-  ctx.response.body = { todos: todos };
+router.get("/todos", (ctx: Context) => {
+  ctx.response.body = { todos };
 });
 
-router.post("/todos", async (ctx) => {
-  const data = await ctx.request.body();
+router.post("/todos", async (ctx: Context) => {
+  if (!ctx.request.hasBody) {
+    ctx.response.status = 400;
+    ctx.response.body = { message: "Request body required" };
+    return;
+  }
+  let value: CreateTodoBody;
+  try {
+    value = await ctx.request.body.json();
+  } catch {
+    ctx.response.status = 415;
+    ctx.response.body = { message: "Invalid JSON body" };
+    return;
+  }
+
+  if (!value?.text) {
+    ctx.response.status = 400;
+    ctx.response.body = { message: "Missing 'text' field" };
+    return;
+  }
+
   const newTodo: Todo = {
-    id: new Date().toISOString(),
-    text: data.value.text,
+    id: crypto.randomUUID(),
+    text: value.text,
   };
 
   todos.push(newTodo);
 
+  ctx.response.status = 201;
   ctx.response.body = { message: "Created todo!", todo: newTodo };
 });
 
-router.put("/todos/:todoId", async (ctx) => {
-  const tid = ctx.params.todoId;
-  const data = await ctx.request.body();
-  const todoIndex = todos.findIndex((todo) => {
-    return todo.id === tid;
-  });
-  todos[todoIndex] = { id: todos[todoIndex].id, text: data.value.text };
+router.put("/todos/:todoId", async (ctx: Context) => {
+  const todoId = ctx.params.todoId;
+  if (!todoId) {
+    ctx.response.status = 400;
+    ctx.response.body = { message: "Todo ID missing" };
+    return;
+  }
+
+  let value: CreateTodoBody;
+  try {
+    value = await ctx.request.body.json();
+  } catch {
+    ctx.response.status = 415;
+    ctx.response.body = { message: "Invalid JSON body" };
+    return;
+  }
+
+  if (!value?.text) {
+    ctx.response.status = 400;
+    ctx.response.body = { message: "Missing 'text' field" };
+    return;
+  }
+
+  const todoIndex = todos.findIndex((t) => t.id === todoId);
+  if (todoIndex === -1) {
+    ctx.response.status = 404;
+    ctx.response.body = { message: "Todo not found" };
+    return;
+  }
+
+  todos[todoIndex].text = value.text;
   ctx.response.body = { message: "Updated todo" };
 });
 
-router.delete("/todos/:todoId", (ctx) => {
-  const tid = ctx.params.todoId;
-  todos = todos.filter((todo) => todo.id !== tid);
+router.delete("/todos/:todoId", (ctx: Context) => {
+  const todoId = ctx.params.todoId;
+  if (!todoId) {
+    ctx.response.status = 400;
+    ctx.response.body = { message: "Todo ID missing" };
+    return;
+  }
+
+  todos = todos.filter((t) => t.id !== todoId);
   ctx.response.body = { message: "Deleted todo" };
 });
 
